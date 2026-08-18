@@ -68,7 +68,7 @@ npx jf npm-config --repo-resolve=npm --server-id-resolve=devreltest
 ### 6. Smoke test
 
 ```bash
-npm install express          # ✅ installs through Artifactory
+npm install dayjs            # ✅ 1 package, zero deps
 npm install lodash@4.17.20   # ❌ 403 + policy name + CVE + upgrade path
 ls node_modules/lodash       # ❌ never landed
 npx jf curation-audit        # 📋 table of blocked packages + waiver prompt
@@ -80,7 +80,7 @@ npx jf curation-audit        # 📋 table of blocked packages + waiver prompt
 
 | # | Command | Expected |
 |---|---------|----------|
-| 1 | `npm install express` | 66 packages, resolved via Artifactory |
+| 1 | `npm install dayjs` | 1 package, zero deps, via Artifactory |
 | 2 | `npm install lodash@4.17.20` | `E403` · `block-critical-cve` · `CVE-2026-4800: 9.8` · upgrade to `4.18.0` |
 | 3 | `ls node_modules/lodash` | No such file — payload never reached disk |
 | 4 | `npx jf curation-audit` | Blocked-package table + waiver prompt |

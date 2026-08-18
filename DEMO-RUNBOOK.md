@@ -34,13 +34,34 @@ cat .npmrc.example
 ## BEAT 2 · Normal work still works (~1.5 min)
 
 ```bash
-npm install express
+npm install dayjs
 ```
 
-Expected: `added 67 packages`
+Expected: `added 1 package in 217ms`
 
-> "Express comes through. Same speed, same command. If curation made my day
-> slower, I'd have uninstalled it by lunch."
+> "One package. Comes straight through. Same command, same speed. If curation
+> made my day slower, I'd have uninstalled it by lunch."
+
+**Then show the caret** — this sets up the whole threat model:
+
+```bash
+cat package.json
+```
+
+```json
+"dependencies": {
+  "dayjs": "^1.11.21"
+}
+```
+
+> "See that caret? It means *this version or any newer compatible one*. I didn't
+> pin 1.11.21 — npm wrote that for me, and it's the default for every package you
+> install. So tomorrow, on a fresh clone with no lockfile, I get 1.11.22. Or
+> 1.12.0. **I approved a version range, not a version.** That's the window
+> attackers publish into."
+
+Chosen deliberately: `dayjs` has **zero dependencies**. One line in, one package
+out — nothing hides in a 67-package tree.
 
 ---
 
