@@ -1,140 +1,179 @@
-# JFrog Curation Demo
+# JFrog Curation npm demo
 
-Live demo environment for the talk **"Whoops, I hacked my company (all I did was `npm install`)"**.
+Minimal repo for the live demo.
 
-Shows JFrog Curation blocking malicious / vulnerable / brand-new npm packages
-*before* they reach a developer's machine — so `postinstall` never runs.
+- Root folder = **unprotected** npm install from the public registry.
+- `protected/` folder = same dependency setup, but npm points to JFrog Artifactory.
+- Only `dayjs` is declared in `package.json`.
+- Install the risky packages **one by one live** so the audience sees each outcome.
 
----
+## Toolchain
 
-## Setup on a new computer (~5 min)
-
-### Prerequisites
-- Node.js 18+
-- Access to a JFrog instance with Curation enabled
-
-### 1. Clone
+Use the Node version from `.tool-versions`:
 
 ```bash
-git clone https://github.com/indie-rok/jfrog-curation-demo.git
-cd jfrog-curation-demo
+node -v
+npm -v
 ```
 
-### 2. Get an Artifactory access token
+Expected for the lifecycle-script demo:
 
-In the JFrog UI: avatar (top right) → **Edit Profile** → **Generate an Identity Token**.
+```text
+node v22.22.2
+npm 10.9.7
+```
 
-Or via API (needs admin):
+If npm is newer, the postinstall output may not appear or scripts may require approval.
+
+## Part 1 — unprotected developer machine
+
+From the repo root:
 
 ```bash
-curl -u <user>:'<password>' \
-  -X POST "https://<your-instance>.jfrog.io/artifactory/api/security/token" \
-  -d "username=<user>&scope=member-of-groups:*&expires_in=0"
+npm install
 ```
 
-### 3. Create `.npmrc`
+Show the normal dependency:
+
+```bash
+cat package.json
+```
+
+Point to the caret range:
+
+```json
+"dayjs": "^1.11.21"
+```
+
+### Bad package 1: known vulnerable lodash
+
+```bash
+npm install lodash@4.17.20
+npm audit
+```
+
+Talk track:
+
+> npm audit is useful, but it runs after the package is already downloaded and installed.
+
+Optional fix demo:
+
+```bash
+npm audit fix
+node -p "require('./node_modules/lodash/package.json').version"
+```
+
+### Bad package 2: suspicious supply-chain package
+
+Current published version verified on npm: `1.1.0`.
+
+```bash
+npm install @indie_rok/demo-suspicious-package@1.1.0 --foreground-scripts
+```
+
+Important: `--foreground-scripts` makes npm print lifecycle-script output in the terminal.
+
+Talk track:
+
+> This is the scary part: installing a package can execute code during install. This demo package is harmless, but a real attacker would look for npm tokens, SSH keys, cloud credentials, or CI secrets.
+
+Then show audit cannot detect it:
+
+```bash
+npm audit
+```
+
+Expected idea:
+
+```text
+found 0 vulnerabilities
+```
+
+## Part 2 — protected by JFrog
+
+Important rehearsal reset: after the unprotected demo, clear npm's local cache so the protected install really has to ask JFrog.
+
+```bash
+npm cache clean --force
+```
+
+Go to the protected folder:
+
+```bash
+cd protected
+```
+
+Create the real `.npmrc` from the example:
 
 ```bash
 cp .npmrc.example .npmrc
 chmod 600 .npmrc
 ```
 
-Then edit `.npmrc` and replace `PUT_YOUR_TOKEN_HERE` with your token.
+Edit `.npmrc` and replace `PUT_YOUR_TOKEN_HERE` with your JFrog token.
 
-> `.npmrc` is gitignored — the token never gets committed.
-> During a screen share, show `.npmrc.example`, never `.npmrc`.
+During screen share, show only:
 
-### 4. Install the JFrog CLI (local to this project, not global)
+```bash
+cat .npmrc.example
+```
+
+Never show the real `.npmrc` with the token.
+
+Install the normal dependency:
 
 ```bash
 npm install
 ```
 
-### 5. Configure the CLI
+Expected:
 
-```bash
-npx jf c add devreltest \
-  --url=https://devreltest.jfrog.io \
-  --access-token=<YOUR_TOKEN> \
-  --interactive=false --overwrite
-
-npx jf npm-config --repo-resolve=npm --server-id-resolve=devreltest
+```text
+added 1 package
 ```
 
-> **Don't skip the second command.** Without it `jf curation-audit` fails with
-> *"no config file was found"*. This is a real DX friction point — the CLI names
-> the exact command you need, but doesn't offer to run it for you.
-
-### 6. Smoke test
+Now try the same bad packages:
 
 ```bash
-npm install dayjs            # ✅ 1 package, zero deps
-npm install lodash@4.17.20   # ❌ 403 + policy name + CVE + upgrade path
-ls node_modules/lodash       # ❌ never landed
-npx jf curation-audit        # 📋 table of blocked packages + waiver prompt
+npm install lodash@4.17.20
 ```
 
----
+Expected:
 
-## The five demo beats
+```text
+E403
+block-critical-cve
+CVE-2026-4800
+```
 
-| # | Command | Expected |
-|---|---------|----------|
-| 1 | `npm install dayjs` | 1 package, zero deps, via Artifactory |
-| 2 | `npm install lodash@4.17.20` | `E403` · `block-critical-cve` · `CVE-2026-4800: 9.8` · upgrade to `4.18.0` |
-| 3 | `ls node_modules/lodash` | No such file — payload never reached disk |
-| 4 | `npx jf curation-audit` | Blocked-package table + waiver prompt |
-| 5 | `npm install @indie_rok/demo-suspicious-package` | `E403` — *"All versions blocked - package not being found in catalog"* |
-
-Reset between rehearsals:
+Then:
 
 ```bash
-rm -rf node_modules package-lock.json && npm install
+npm install @indie_rok/demo-suspicious-package@1.1.0 --foreground-scripts
 ```
 
----
+Expected:
 
-## Server-side configuration
+```text
+E403
+All versions blocked
+```
 
-Reproduced in full in [`SETUP-GUIDE.md`](./SETUP-GUIDE.md).
+Final proof:
 
-**Repositories**
-- `npm-remote` — Remote, npm, proxying `https://registry.npmjs.org`
-- `npm` — Virtual, npm, containing `npm-remote`
+```bash
+ls node_modules/lodash
+ls node_modules/@indie_rok
+```
 
-**Curation**: ON · npm connected at 100% incl. CLI pass-through · fallback = Block Always
+Talk track:
 
-**Policies** (all `action=block`, `scope=[npm-remote]`, waiver=manual)
+> Same npm command, different registry path. The package never reached my machine, so the install script never ran.
 
-| Policy | Condition |
-|---|---|
-| `block-malicious-packages` | Flagged malicious by JFrog Security Research |
-| `block-immature-versions-14d` | Version younger than 14 days |
-| `block-critical-cve` | CVE with CVSS ≥ 9 |
-| `block-copyleft-licenses` | Copyleft (GPL-family) license |
+## Reset between rehearsals
 
----
+From either root or `protected/`:
 
-## Gotchas found while building this
-
-1. **`missedRetrievalCachePeriodSecs` is 1800s.** Query a package through
-   Artifactory before npm's CDN has propagated it, and the 404 is cached for
-   30 minutes. Looks broken; isn't.
-2. **`POST /artifactory/api/security/users/{name}` is a full-object replace.**
-   Omitting `"admin": true` silently revokes your own admin — and returns
-   `200 OK`. The UI guards against this; the API does not.
-3. **JFrog's public docs reference `/curation/api/v1/`** — that 404s.
-   The real path is `/xray/api/v1/curation/`.
-4. **`waiver_request_config`** accepts only `forbidden` or `manual`.
-5. **Waiver decision owners must be a group**, not an individual user.
-
----
-
-## Files
-
-| File | Purpose |
-|---|---|
-| `DEMO-RUNBOOK.md` | The five beats with timings and exact commands |
-| `SETUP-GUIDE.md` | Part A: how the JFrog side was built · Part B: replication |
-| `.npmrc.example` | Safe to commit and to show on screen |
-| `.npmrc` | Real token — gitignored, `chmod 600` |
+```bash
+rm -rf node_modules package-lock.json
+```

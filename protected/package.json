@@ -1,0 +1,10 @@
+{
+  "name": "jfrog-curation-demo-protected",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Protected npm demo project. Same dependencies, but npm resolves through JFrog Artifactory.",
+  "type": "commonjs",
+  "dependencies": {
+    "dayjs": "^1.11.21"
+  }
+}
