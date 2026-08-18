@@ -107,24 +107,71 @@ Expected: `No such file or directory`
 
 ---
 
-## BEAT 5 · My own package (~2 min)
+## BEAT 5 · The damage, then the block (~3 min) ← **the emotional peak**
+
+Two folders, same machine, same command. The **only** difference is `.npmrc`.
+
+### 5a · Unprotected — what happens today
 
 ```bash
-npm install @indie_rok/demo-suspicious-package
+cd unprotected
+npm install @indie_rok/demo-suspicious-package --foreground-scripts
 ```
 
-Expected:
+```
+> @indie_rok/demo-suspicious-package@1.0.0 postinstall
+> node postinstall.js
+
+📤 I just found your ~/.aws/credentials and your npm token...
+
+...just kidding. This is a harmless demo package for a security talk.
+It reads no files, sends no data, and does nothing at all.
+
+But notice: this script ran AUTOMATICALLY when you installed.
+You never approved it. That's the point.
+Shai Hulud (Sept 2025) used exactly this mechanism - for real.
+
+added 1 package in 177ms
+```
+
+**Pause here. Let it sit.**
+
+> "I published this package myself. It's real, it's on npm right now, anyone in
+> this room can install it. I never approved that script — it ran because that's
+> what `npm install` does. If I were an attacker, that print statement is where
+> the exfiltration would go. And notice the timing: 177 milliseconds. Faster than
+> you can read the line telling you it happened."
+
+### 5b · Protected — same command, one folder up
+
+```bash
+cd ..
+npm install @indie_rok/demo-suspicious-package --foreground-scripts
+```
 
 ```
 npm notice All versions blocked - package not being found in catalog
 npm error code E403
 ```
 
-> "I published this myself. It's real, it's on npm right now, anyone can install
-> it. Artifactory won't hand it to me — JFrog's catalog has never seen it, and the
-> default is deny. That's the Axios window, closed by default."
+```bash
+ls node_modules/@indie_rok
+# No such file or directory
+```
 
-**Optional:** show `postinstall.js` in the editor, don't run it.
+> "Same machine, same command, same package. The only difference between these
+> two folders is one line in `.npmrc`. The tarball never downloaded, so the
+> script never existed to run. JFrog's catalog has never seen this package —
+> and the default is deny."
+
+**Why `unprotected/` works:** npm reads `.npmrc` from the current directory, not
+by walking up the tree. A subfolder with its own `package.json` and no `.npmrc`
+resolves to `registry.npmjs.org`. Nothing was disabled in JFrog to make this work.
+
+**Reset between rehearsals:**
+```bash
+rm -rf unprotected/node_modules unprotected/package-lock.json
+```
 
 ---
 

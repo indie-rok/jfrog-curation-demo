@@ -1,0 +1,15 @@
+{
+  "name": "unprotected",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@indie_rok/demo-suspicious-package": "^1.0.0"
+  }
+}
