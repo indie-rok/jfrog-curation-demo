@@ -1,137 +1,164 @@
-# JFrog Curation — DEMO RUNBOOK (all verified live 2026-08-18)
+# DEMO RUNBOOK — JFrog Curation
 
-Instance: https://devreltest.jfrog.io · user `devrel` · trial day 6/75 (until Oct 26 2026)
-Demo project: `~/jfrog-curation-demo` (all deps local, nothing global)
-
----
-
-## SERVER SIDE — what I built
-
-### Repositories
-| Key | Type | Notes |
-|---|---|---|
-| `npm-remote` | Remote (npm) | proxy + cache of https://registry.npmjs.org |
-| `npm` | Virtual (npm) | the ONE url `.npmrc` points at |
-
-### Curation
-- Service **ON**; npm package type **Connected (100%)** (incl. "CLI audit support / Pass-through")
-- Fallback: **Block Always** (default)
-- Group `security-team` created = waiver decision owners
-
-### Policies (4 — all block, scope `npm-remote`, waivers manual → security-team)
-| id | name | condition |
-|---|---|---|
-| 2 | block-malicious-packages | cond 1 · isMalicious |
-| 3 | block-immature-versions-14d | cond 15 · isImmature, 14 days ← **the Axios window** |
-| 4 | block-critical-cve | cond 3 · CVE CVSS ≥ 9 |
-| 5 | block-copyleft-licenses | cond 10 · GNU GPL family |
-
-**Talking point:** the 14-day immature threshold is a JFrog **built-in default** — not a number I invented.
+**Format:** ~5 min slides → ~9 min live terminal → 1–2 min FAQ/close
+**Golden rule:** one line in `.npmrc` is the whole mechanism. No CLI, no tooling.
 
 ---
 
-## THE DEMO — 5 beats, in order
+## Before you start
 
-### Beat 1 — "this is a normal project" (~1 min)
-    cat .npmrc          # 2 lines: registry + token. That's the whole change.
-    npm install express
-    → added 67 packages in 11s
-
-### Beat 2 — the block ❌ (the money shot, ~3 min)
-    npm install lodash@4.17.20
-
-Real output:
-
-    npm notice package lodash:4.17.20 download was blocked by jfrog packages curation
-    service due to the following policies violated {block-critical-cve, CVE with CVSS
-    score of 9 or above (with or without a fix version available), Package version
-    contains the following vulnerability(s): CVE-2026-4800: 9.8, Upgrade to the
-    following version(s): CVE-2026-4800: 4.18.0}. For details and alternatives, visit:
-    https://devreltest.jfrog.io/ui/catalog/packages/details/npm/lodash/4.17.20
-    npm error code E403
-    npm error 403 403 Forbidden - GET .../lodash/-/lodash-4.17.20.tgz
-
-Point at it: policy name · CVE · CVSS 9.8 · **the fix version** · a Catalog link.
-
-### Beat 3 — the proof line (~30 s)
-    ls node_modules | wc -l      # 65
-    ls node_modules/lodash       # does not exist
-> "The payload never reached my machine. postinstall never ran.
->  This isn't detection after the fact — nothing was downloaded."
-
-### Beat 4 — developer empathy (~2 min)
-    npx jf curation-audit
-
-    Found 1 blocked packages for project jfrog-curation-demo:1.0.0
-    ┌────┬────────┬─────────┬────────────────────┬─────────────────────┐
-    │ 1  │ lodash │ 4.17.20 │ block-critical-cve │ CVE-2026-4800: 9.8  │
-    │    │        │         │                    │ Upgrade to: 4.18.0  │
-    └────┴────────┴─────────┴────────────────────┴─────────────────────┘
-    Do you want to request a waiver for any of the listed packages? (y/n)
-
-> "You don't discover this when CI fails at 6pm. You ask first —
->  and if you really need it, you request a waiver right here.
->  Not a black box. A conversation."
-
-### Beat 5 — the UI, briefly (~1 min)
-Curation → Audit Events = what the security team sees ("who tried to install what").
-Then the Catalog link from the error message = "where the verdict comes from."
-
----
-
-## ⚠️ HONEST DX FRICTION (say this — it's the developer-empathy card)
-On a fresh project `jf curation-audit` fails:
-
-    [Error] no config file was found! Before running the npm command on a project
-    for the first time, the project should be configured using the 'jf npm c' command
-
-Fix: `npx jf npm-config --repo-resolve=npm --server-id-resolve=devreltest`
-
-> "The CLI knew exactly what was wrong and even named the command —
->  but it could have just offered to run it for me. That's a 30-second fix
->  that would remove the first-run cliff for every new developer."
-
----
-
-## SETUP COMMANDS (to rebuild solo)
-
-    # client
-    mkdir ~/jfrog-curation-demo && cd ~/jfrog-curation-demo && npm init -y
-    # .npmrc:
-    #   registry=https://devreltest.jfrog.io/artifactory/api/npm/npm/
-    #   //devreltest.jfrog.io/artifactory/api/npm/npm/:_authToken=<TOKEN>
-    npm install --save-dev jfrog-cli-v2-jf          # v2.117.0, local
-    npx jf c add devreltest --url=https://devreltest.jfrog.io --access-token=<TOKEN> --interactive=false
-    npx jf npm-config --repo-resolve=npm --server-id-resolve=devreltest
-
-    # token (non-expiring)
-    curl -u devrel:<pass> -X POST https://devreltest.jfrog.io/artifactory/api/security/token \
-      -d "username=devrel&scope=member-of-groups:*&expires_in=0"
-
-## API cheat-sheet (endpoints that actually work here)
-- Policies:    GET/POST `/xray/api/v1/curation/policies`
-- Conditions:  GET `/xray/api/v1/curation/conditions` (15 predefined)
-- Repos:       GET `/artifactory/api/repositories`
-- Groups:      GET `/artifactory/api/security/groups`
-- ⚠️ `/curation/api/v1/*` (per JFrog's ai-agent-examples doc) 404s on this instance — wrong base path.
-
-Policy JSON that works:
-```json
-{"name":"block-malicious-packages","condition_id":"1","scope":"specific_repos",
- "repo_include":["npm-remote"],"policy_action":"block",
- "waiver_request_config":"manual","decision_owners":["security-team"],
- "notify_email_list":[]}
+```bash
+cd ~/jfrog-curation-demo
+rm -rf node_modules package-lock.json      # clean slate
+clear
 ```
-`waiver_request_config` ∈ {`forbidden`, `manual`}; `manual` requires `decision_owners` = existing **group**.
+
+Terminal font large. `.npmrc.example` open in the editor — **never** `.npmrc`.
+
+Re-run the whole thing once the morning of the demo (see *Timing traps* below).
 
 ---
 
-## STILL TO DO
-1. **npm publish** `@indie-rok/demo-suspicious-package` — blocked: your token triggers web-auth.
-   Need a **granular access token with publish permission + bypass 2FA**. → unlocks beat 5b (immature policy blocks your own 1-day-old package).
-2. Screenshots for slides S4 / S10 (policy list + Audit Events).
-3. JFrog MCP: enable in admin, then
-   `claude mcp add --transport http --scope project jfrog https://devreltest.jfrog.io/mcp`
-4. Push this project to GitHub as `indie-rok/jfrog-curation-demo`
-   ⚠️ `.npmrc` contains a live token → add to `.gitignore`, commit `.npmrc.example` instead.
-5. Rehearse end-to-end; **rotate all tokens after the interview.**
+## BEAT 1 · The change (~1 min)
+
+```bash
+cat .npmrc.example
+```
+
+> "This is the entire client-side change. One line pointing npm at Artifactory
+> instead of registry.npmjs.org. No plugin, no CLI, no wrapper. Your `npm install`
+> stays `npm install`."
+
+---
+
+## BEAT 2 · Normal work still works (~1.5 min)
+
+```bash
+npm install express
+```
+
+Expected: `added 67 packages`
+
+> "Express comes through. Same speed, same command. If curation made my day
+> slower, I'd have uninstalled it by lunch."
+
+---
+
+## BEAT 3 · The block (~3 min) ← **the money shot**
+
+```bash
+npm install lodash@4.17.20
+```
+
+Expected:
+
+```
+npm notice package lodash:4.17.20 download was blocked by jfrog packages
+curation service due to the following policies violated {block-critical-cve,
+CVE with CVSS score of 9 or above ...,CVE-2026-4800: 9.8,
+Upgrade to the following version(s): CVE-2026-4800: 4.18.0}
+npm error code E403
+```
+
+Talk **through** the message, slowly — it does four things:
+
+1. names the **policy** (`block-critical-cve`)
+2. names the **reason** (CVE-2026-4800, CVSS 9.8)
+3. gives the **fix** (upgrade to 4.18.0)
+4. links to the **catalog** entry
+
+> "This is not 'permission denied.' It tells me which rule, why, and what to do
+> instead. That's the difference between a security tool and a security wall."
+
+---
+
+## BEAT 4 · It never landed (~1 min)
+
+```bash
+ls node_modules/lodash
+```
+
+Expected: `No such file or directory`
+
+> "The tarball never reached my disk. Nothing was unpacked. If there had been a
+> postinstall script, it had nothing to run from. This is the whole point:
+> not detection after the fact — prevention before arrival."
+
+---
+
+## BEAT 5 · My own package (~2 min)
+
+```bash
+npm install @indie_rok/demo-suspicious-package
+```
+
+Expected:
+
+```
+npm notice All versions blocked - package not being found in catalog
+npm error code E403
+```
+
+> "I published this myself. It's real, it's on npm right now, anyone can install
+> it. Artifactory won't hand it to me — JFrog's catalog has never seen it, and the
+> default is deny. That's the Axios window, closed by default."
+
+**Optional:** show `postinstall.js` in the editor, don't run it.
+
+---
+
+## Timing traps — read before demo day
+
+| Trap | What happens | Fix |
+|---|---|---|
+| Catalog ingests my package | Beat 5 message changes from *"not found in catalog"* to the 14-day immature policy | Both are fine — **run it the morning of** so you know which line you'll get |
+| Package ages past 14 days | Beat 5 may stop blocking entirely | `cd ~/demo-suspicious-package && npm version patch && npm publish` resets the clock |
+| Fresh publish, queried too early | Artifactory caches the 404 for **30 min** (`missedRetrievalCachePeriodSecs: 1800`) and you get a confusing 404 instead of 403 | Publish the day *before*, never minutes before |
+
+---
+
+## npm 12 — know this before someone asks
+
+**npm 12 (2026-07-08) turned install scripts OFF by default.** `allowScripts`
+now defaults to off; git and remote-URL dependencies are disabled too. The change
+was backported to the 11.x line — npm **11.19.0** (2026-07-29) already blocks them.
+
+So "npm install runs code automatically" is **no longer true on current npm**.
+Do not claim otherwise. If it comes up:
+
+> "npm finally shipped this in v12 — install scripts are off by default now, and
+> that's genuinely good. But: millions of CI configs and older npm versions are
+> still out there, teams add allowlists to get their builds green again, and it
+> does nothing about malicious code that isn't in a lifecycle script — a poisoned
+> `index.js` still runs the moment you `require()` it. npm 12 narrows the window.
+> Curation closes the door."
+
+Last npm that ran postinstall by default: **11.18.0** (2026-06-29).
+
+---
+
+## If something breaks on stage
+
+| Symptom | Say this | Do this |
+|---|---|---|
+| `E404` instead of `E403` | "cache is warming up" | Move to Beat 3 (lodash), always works |
+| Network dies | "here's what it looks like" | Show slide S10 — it has the real captured output |
+| lodash unexpectedly installs | "policy scope changed" | Check the policy is still `action=block` on `npm-remote` |
+
+---
+
+## Cut from the demo (deliberately)
+
+**JFrog CLI (`jf curation-audit`)** — it's a *shift-left convenience*, not part of
+enforcement. Blocking works with zero tooling. Keeping it in meant pasting a token
+on screen, two config commands, and two cosmetic warnings.
+
+Mention it in FAQ instead:
+
+> "There's also `jf curation-audit`, which scans your `package.json` and shows
+> everything that would be blocked *before* you install. Worth noting: on a fresh
+> project it fails until you run `jf npm-config` first. The error names the exact
+> command you need — it just doesn't offer to run it. Small thing, but that's the
+> kind of moment where a developer gives up."
+
+That's honest product feedback and it lands better spoken than demoed.
