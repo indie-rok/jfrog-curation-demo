@@ -5,6 +5,7 @@ Minimal repo for the live demo.
 - Root folder = **unprotected** npm install from the public registry.
 - `protected/` folder = same dependency setup, but npm points to JFrog Artifactory.
 - Only `dayjs` is declared in `package.json`.
+- The fake `.env` files contain exactly two safe `SUPERSAFE_` variables for the supply-chain demo.
 - Install the risky packages **one by one live** so the audience sees each outcome.
 
 ## Toolchain
@@ -65,17 +66,40 @@ node -p "require('./node_modules/lodash/package.json').version"
 
 ### Bad package 2: suspicious supply-chain package
 
-Current published version verified on npm: `1.1.0`.
+Install the package without pinning a version — npm will resolve the latest published version.
+
+Show the fake secrets first:
 
 ```bash
-npm install @indie_rok/demo-suspicious-package@1.1.0 --foreground-scripts
+cat .env
+```
+
+Load the fake secrets into the terminal environment:
+
+```bash
+set -a
+source .env
+set +a
+```
+
+Then install the package:
+
+```bash
+npm install @indie_rok/demo-suspicious-package --foreground-scripts
 ```
 
 Important: `--foreground-scripts` makes npm print lifecycle-script output in the terminal.
 
+Expected idea:
+
+```text
+SUPERSAFE_API_KEY=demo_fake_api_key_123456
+SUPERSAFE_NPM_TOKEN=demo_fake_npm_token_abcdef
+```
+
 Talk track:
 
-> This is the scary part: installing a package can execute code during install. This demo package is harmless, but a real attacker would look for npm tokens, SSH keys, cloud credentials, or CI secrets.
+> These are fake secrets, safe to show. But the mechanism is real: an install script can read environment variables. In a real CI job, those could be npm tokens, GitHub tokens, cloud credentials, or deployment secrets.
 
 Then show audit cannot detect it:
 
@@ -146,10 +170,19 @@ block-critical-cve
 CVE-2026-4800
 ```
 
-Then:
+Then show the same fake secrets exist here too:
 
 ```bash
-npm install @indie_rok/demo-suspicious-package@1.1.0 --foreground-scripts
+cat .env
+set -a
+source .env
+set +a
+```
+
+Then try the suspicious package again:
+
+```bash
+npm install @indie_rok/demo-suspicious-package --foreground-scripts
 ```
 
 Expected:
@@ -168,7 +201,7 @@ ls node_modules/@indie_rok
 
 Talk track:
 
-> Same npm command, different registry path. The package never reached my machine, so the install script never ran.
+> Same npm command, same fake secrets, different registry path. The package never reached my machine, so the install script never ran and the fake secrets were never printed.
 
 ## Reset between rehearsals
 
