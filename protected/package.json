@@ -5,7 +5,7 @@
   "description": "Protected npm demo project. Same dependencies, but npm resolves through JFrog Artifactory.",
   "type": "commonjs",
   "dependencies": {
-    "@indie_rok/demo-suspicious-package": "^1.4.0",
+    "csv-handler-totally-safe": "^1.4.0",
     "dayjs": "^1.11.21",
     "lodash": "^4.17.20"
   }
